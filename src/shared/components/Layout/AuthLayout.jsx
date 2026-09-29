@@ -1,14 +1,21 @@
 import { Link } from 'react-router-dom';
 
-export function AuthLayout({ title, subtitle, eyebrow, children }) {
+export function AuthLayout({
+  title,
+  subtitle,
+  eyebrow,
+  children,
+  heading = 'Make every item count.',
+  tagline = 'Keep your stock, team, and operations in one calm, connected workspace.',
+}) {
   return (
     <div className="auth-page">
       <section className="auth-art">
-        <div className="brand"><span>◆</span> Stockwise</div>
+        <Link className="brand" to="/"><span>◆</span> Stockwise</Link>
         <div>
           <p className="eyebrow">INVENTORY, SIMPLIFIED</p>
-          <h1>Make every item count.</h1>
-          <p>Keep your stock, team, and operations in one calm, connected workspace.</p>
+          <h1>{heading}</h1>
+          <p>{tagline}</p>
         </div>
         <div className="art-card">
           <span>↗</span>

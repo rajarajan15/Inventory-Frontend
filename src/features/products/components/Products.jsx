@@ -1,70 +1,69 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { api } from '../../../shared/api/api';
-import { errorText } from '../../../shared/utils/errorUtils';
+import { useAsync } from '../../../shared/hooks/useAsync';
+import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
 import { Page } from '../../../shared/components/Layout/Page';
 import { Alert } from '../../../shared/components/ui/Alert';
+import { Pagination } from '../../../shared/components/ui/Pagination';
 import { ProductTable } from './ProductTable';
 
+const PAGE_SIZE = 20;
+const SORTS = [
+  ['name', 'Name (A–Z)'],
+  ['quantity', 'Stock (lowest first)'],
+  ['quantity,desc', 'Stock (highest first)'],
+  ['price,desc', 'Price (highest first)'],
+  ['updatedAt,desc', 'Recently updated'],
+];
+
 export function Products() {
-  const { user } = useAuth();
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const { user, api, path } = useAuth();
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [error, setError] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [sort, setSort] = useState('name');
+  const [page, setPage] = useState(0);
+  const [actionError, setActionError] = useState(null);
+  const debouncedSearch = useDebouncedValue(search.trim());
 
-  const loadProducts = async () => {
-    const q = new URLSearchParams();
-    if (search) q.set('search', search);
-    if (category) q.set('categoryId', category);
+  const categories = useAsync(() => api.categories(), [api]);
+  const products = useAsync(
+    () => api.products({ search: debouncedSearch, categoryId, sort, page, size: PAGE_SIZE }),
+    [api, debouncedSearch, categoryId, sort, page],
+  );
+
+  // Any filter change starts again from the first page
+  const filter = (setter) => (e) => { setter(e.target.value); setPage(0); };
+
+  async function remove(id) {
+    if (!confirm('Delete this product? This cannot be undone.')) return;
+    setActionError(null);
     try {
-      const productsData = await api.products(q.toString() ? `?${q}` : '');
-      setProducts(productsData);
+      await api.deleteProduct(id);
+      products.reload();
     } catch (e) {
-      setError(errorText(e));
+      setActionError(e);
     }
-  };
-
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const categoriesData = await api.categories();
-        setCategories(categoriesData);
-      } catch (e) {
-        setError(errorText(e));
-      }
-    };
-    loadCategories();
-  }, []);
-
-  useEffect(() => {
-    const t = setTimeout(loadProducts, 250);
-    return () => clearTimeout(t);
-  }, [search, category]);
+  }
 
   return (
-    <Page title="Products" subtitle="Search, monitor, and manage your inventory." action={user.role === 'ADMIN' && <Link className="button" to="/products/new">+ Add product</Link>}>
-      <Alert text={error} />
+    <Page title="Products" subtitle="Search, monitor, and manage your inventory." action={user.role === 'ADMIN' && <Link className="button" to={path('/products/new')}>+ Add product</Link>}>
+      <Alert text={actionError || products.error || categories.error} />
       <div className="toolbar">
-        <input aria-label="Search products" placeholder="Search by product name or SKU…" value={search} onChange={e => setSearch(e.target.value)} />
-        <select value={category} onChange={e => setCategory(e.target.value)}>
+        <input aria-label="Search products" placeholder="Search by product name or SKU…" maxLength={100} value={search} onChange={filter(setSearch)} />
+        <select aria-label="Category" value={categoryId} onChange={filter(setCategoryId)}>
           <option value="">All categories</option>
-          {categories.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}
+          {(categories.data || []).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}
+        </select>
+        <select aria-label="Sort by" value={sort} onChange={filter(setSort)}>
+          {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </div>
-      <section className="card">
-        <ProductTable products={products} onDelete={async id => {
-          if (confirm('Delete this product? This cannot be undone.')) {
-            try {
-              await api.deleteProduct(id);
-              loadProducts();
-            } catch (e) {
-              setError(errorText(e));
-            }
-          }
-        }} />
+      <section className={`card${products.loading ? ' is-loading' : ''}`} aria-busy={products.loading}>
+        {products.data
+          ? <ProductTable products={products.data.content} onDelete={remove} />
+          : !products.error && <p className="muted">Loading products…</p>}
+        <Pagination page={products.data} onChange={setPage} label="products" />
       </section>
     </Page>
   );

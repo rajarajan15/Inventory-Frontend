@@ -1,60 +1,78 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { api } from '../../../shared/api/api';
-import { errorText } from '../../../shared/utils/errorUtils';
+import { useAsync } from '../../../shared/hooks/useAsync';
+import { formErrors } from '../../../shared/utils/errorUtils';
 import { Page } from '../../../shared/components/Layout/Page';
 import { Alert } from '../../../shared/components/ui/Alert';
 import { Empty } from '../../../shared/components/ui/Empty';
 
+const EMPTY_DRAFT = { name: '', description: '' };
+
 export function Categories() {
-  const { user } = useAuth();
-  const [items, setItems] = useState([]);
-  const [draft, setDraft] = useState({ name: '', description: '' });
+  const { user, api } = useAuth();
+  const categories = useAsync(() => api.categories(), [api]);
+  const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editing, setEditing] = useState(null);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [busy, setBusy] = useState(false);
 
-  const loadCategories = async () => {
-    try {
-      const categoriesData = await api.categories();
-      setItems(categoriesData);
-    } catch (e) {
-      setError(errorText(e));
-    }
-  };
-
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  function reset() {
+    setEditing(null);
+    setDraft(EMPTY_DRAFT);
+    setErrors({});
+  }
 
   async function save(e) {
     e.preventDefault();
+    setBusy(true);
+    setErrors({});
     try {
       await api.saveCategory(draft, editing?.id);
-      setDraft({ name: '', description: '' });
-      setEditing(null);
-      loadCategories();
-    } catch (e) {
-      setError(errorText(e));
+      reset();
+      categories.reload();
+    } catch (err) {
+      setErrors(formErrors(err));
+    } finally {
+      setBusy(false);
     }
   }
 
+  async function remove(c) {
+    if (!confirm(`Delete ${c.name}?`)) return;
+    setErrors({});
+    try {
+      await api.deleteCategory(c.id);
+      categories.reload();
+    } catch (err) {
+      setErrors({ form: err });
+    }
+  }
+
+  const items = categories.data || [];
+
   return (
     <Page title="Categories" subtitle="Organize products into clear, useful groups.">
-      <Alert text={error} />
+      <Alert text={errors.form || categories.error} inlineFields={['name', 'description']} />
       {user.role === 'ADMIN' && (
         <section className="card category-form">
           <h3>{editing ? 'Edit category' : 'Add a category'}</h3>
           <form onSubmit={save} className="inline-form">
-            <input placeholder="Category name" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} required />
-            <input placeholder="Description (optional)" value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} />
-            <button className="button">{editing ? 'Save' : 'Add category'}</button>
-            {editing && <button className="button ghost" type="button" onClick={() => { setEditing(null); setDraft({ name: '', description: '' }); }}>Cancel</button>}
+            <div>
+              <input aria-label="Category name" placeholder="Category name" maxLength={255} value={draft.name} aria-invalid={errors.name ? true : undefined} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+              {errors.name && <small className="field-error">{errors.name}</small>}
+            </div>
+            <div>
+              <input aria-label="Description" placeholder="Description (optional)" maxLength={1000} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+              {errors.description && <small className="field-error">{errors.description}</small>}
+            </div>
+            <button className="button" disabled={busy}>{editing ? 'Save' : 'Add category'}</button>
+            {editing && <button className="button ghost" type="button" onClick={reset}>Cancel</button>}
           </form>
         </section>
       )}
       <section className="card">
         <div className="category-list">
-          {items.length ? items.map(c => (
+          {items.length ? items.map((c) => (
             <article className="category-row" key={c.id}>
               <div className="category-icon">#</div>
               <div>
@@ -64,19 +82,12 @@ export function Categories() {
               <span>{c.productCount} {c.productCount === 1 ? 'product' : 'products'}</span>
               {user.role === 'ADMIN' && (
                 <div className="row-actions">
-                  <button className="link" onClick={() => { setEditing(c); setDraft({ name: c.name, description: c.description || '' }); }}>Edit</button>
-                  <button className="link danger" onClick={async () => {
-                    if (confirm(`Delete ${c.name}?`)) try {
-                      await api.deleteCategory(c.id);
-                      loadCategories();
-                    } catch (e) {
-                      setError(errorText(e));
-                    }
-                  }}>Delete</button>
+                  <button className="link" onClick={() => { setEditing(c); setDraft({ name: c.name, description: c.description || '' }); setErrors({}); }}>Edit</button>
+                  <button className="link danger" onClick={() => remove(c)}>Delete</button>
                 </div>
               )}
             </article>
-          )) : <Empty title="No categories yet" text="Create a category before adding products." />}
+          )) : categories.data && <Empty title="No categories yet" text="Create a category before adding products." />}
         </div>
       </section>
     </Page>

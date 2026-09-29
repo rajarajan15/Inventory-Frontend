@@ -1,3 +1,3 @@
-export function Loading() {
-  return <div className="loading"><span>◆</span> Loading inventory…</div>;
+export function Loading({ text = 'Loading…' }) {
+  return <div className="loading"><span>◆</span> {text}</div>;
 }

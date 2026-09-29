@@ -5,7 +5,7 @@ import { StockBadge } from './StockBadge';
 import { Empty } from '../../../shared/components/ui/Empty';
 
 export function ProductTable({ products, compact = false, onDelete }) {
-  const { user } = useAuth();
+  const { user, path } = useAuth();
 
   if (!products.length) return <Empty title="No products found" text="Try a different search or add your first product." />;
 
@@ -27,7 +27,7 @@ export function ProductTable({ products, compact = false, onDelete }) {
           {products.map(p => (
             <tr key={p.id}>
               <td>
-                <Link className="product-name" to={`/products/${p.id}`}>{p.name}</Link>
+                <Link className="product-name" to={path(`/products/${p.id}`)}>{p.name}</Link>
                 {p.description && <small>{p.description}</small>}
               </td>
               <td>{p.categoryName || 'Uncategorised'}</td>
@@ -36,10 +36,10 @@ export function ProductTable({ products, compact = false, onDelete }) {
               <td><StockBadge product={p} /></td>
               {!compact && <td>{niceDate(p.updatedAt)}</td>}
               <td className="row-actions">
-                <Link to={`/products/${p.id}`}>View</Link>
+                <Link to={path(`/products/${p.id}`)}>View</Link>
                 {user.role === 'ADMIN' && (
                   <>
-                    <Link to={`/products/${p.id}/edit`}>Edit</Link>
+                    <Link to={path(`/products/${p.id}/edit`)}>Edit</Link>
                     {onDelete && <button className="link danger" onClick={() => onDelete(p.id)}>Delete</button>}
                   </>
                 )}
